@@ -88,10 +88,17 @@ def load_data():
 
     training_data, validation_data, test_data = torch.utils.data.random_split(segmented,[0.7,0.2,0.1],generator=torch.Generator().manual_seed(0))
 
-    x_train, _, y_train = gen_labels(training_data.dataset[training_data.indices])
+    compress_channel = True
+    if compress_channel:
+        _, x_train, y_train = gen_labels(training_data.dataset[training_data.indices])
 
-    x_valid, _, y_valid = gen_labels(validation_data.dataset[validation_data.indices])
-    x_test, _, y_test = gen_labels(test_data.dataset[test_data.indices])
+        _, x_valid, y_valid = gen_labels(validation_data.dataset[validation_data.indices])
+        _, x_test, y_test = gen_labels(test_data.dataset[test_data.indices])
+    else:
+        x_train, _, y_train = gen_labels(training_data.dataset[training_data.indices])
+
+        x_valid, _, y_valid = gen_labels(validation_data.dataset[validation_data.indices])
+        x_test, _, y_test = gen_labels(test_data.dataset[test_data.indices])
 
     return x_train, y_train, x_valid, y_valid, x_test, y_test, n_classes
 
@@ -199,15 +206,15 @@ def optimize_network():
     0 = Vanilla CNN
     1 = Convolutional Autoencoder
     '''
-    case_to_run = 0
+    case_to_run = 1
 
 
     # do the hyperparameter optimzation
     if case_to_run == 0:
-        study = optuna.create_study(storage='sqlite:///db.sqlite3',study_name='VanillaCnn',direction='maximize',load_if_exists=True)
+        study = optuna.create_study(storage='sqlite:///db.sqlite3',study_name='VanillaCnnCompressed',direction='maximize',load_if_exists=True)
         study.optimize(objective_Vanilla_Cnn,n_trials=50)
     elif case_to_run == 1:
-        study = optuna.create_study(storage='sqlite:///db.sqlite3', study_name='CAE', direction='maximize',
+        study = optuna.create_study(storage='sqlite:///db.sqlite3', study_name='CAECompressed', direction='maximize',
                                     load_if_exists=True)
         study.optimize(objective_CAE, n_trials=50)
 

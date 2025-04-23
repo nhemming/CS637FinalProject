@@ -29,7 +29,7 @@ class VanillaCnn(nn.Module):
 
         self.h_params = h_params
         self.conv_layer_dict = dict()
-        channel_in = 3
+        channel_in = 1
         self.pool = nn.MaxPool2d(self.h_params['pool_kernel'], self.h_params['pool_stride']).to(device)
         for i in range(self.h_params['n_cnn_layers']):
             self.conv_layer_dict['conv_'+str(i)] = nn.Conv2d(in_channels=channel_in,
@@ -236,7 +236,7 @@ class CAE(nn.Module):
 
         self.h_params = h_params
         self.conv_layer_dict = dict()
-        channel_in = 3
+        channel_in = 1
         #self.pool = nn.MaxPool2d(self.h_params['pool_kernel'], self.h_params['pool_stride']).to(device)
 
         # build encoder
