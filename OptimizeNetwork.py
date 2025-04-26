@@ -70,7 +70,7 @@ def gen_labels(data):
 
     return x_extract, x_extract_comp, labels
 
-def load_data():
+def load_data(compress_channel):
     """
     Loads the dataset from a locally saved numpy file
     :return:
@@ -88,7 +88,6 @@ def load_data():
 
     training_data, validation_data, test_data = torch.utils.data.random_split(segmented,[0.7,0.2,0.1],generator=torch.Generator().manual_seed(0))
 
-    compress_channel = True
     if compress_channel:
         _, x_train, y_train = gen_labels(training_data.dataset[training_data.indices])
 
@@ -117,7 +116,7 @@ def objective_Vanilla_Cnn(trial: optuna.Trial) -> float:
     kernel_size = trial.suggest_int('kernel_size',3,10)
     stride = 1 #trial.suggest_int('stride',1,1)
     channel_growth = trial.suggest_int('channel_growth',0,4)
-    pool_kernel = trial.suggest_int('pool_kernel',2,2)
+    pool_kernel = 2 #trial.suggest_int('pool_kernel',2,2)
     pool_stride = 1 #trial.suggest_int('pool_stride',1,1)
     connect_layer_1 = trial.suggest_int('connect_layer_1',16,1028)
     connect_layer_2 = trial.suggest_int('connect_layer_2', 16, 1028)
@@ -133,10 +132,10 @@ def objective_Vanilla_Cnn(trial: optuna.Trial) -> float:
                 'connect_layer_1':connect_layer_1,
                 'connect_layer_2':connect_layer_2,
                 'trial_num':trial.number,
-                'study_name':trial.study.study_name,
-                'n_trials':10}
+                'study_name':trial.study.study_name}
 
-    x_train, y_train, x_valid, y_valid, x_test, y_test, n_classes = load_data()
+    compress_channel = True
+    x_train, y_train, x_valid, y_valid, x_test, y_test, n_classes = load_data(compress_channel)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train_dataset = TensorDataset(torch.Tensor(x_train).to(device), torch.Tensor(y_train).to(device))
@@ -148,7 +147,8 @@ def objective_Vanilla_Cnn(trial: optuna.Trial) -> float:
     test_dataset = TensorDataset(torch.Tensor(x_test).to(device), torch.Tensor(y_test).to(device))
     test_dataloader = DataLoader(test_dataset)
 
-    cnn = Model.VanillaCnn(n_classes,h_params)
+    n_channels = x_train.shape[1]
+    cnn = Model.VanillaCnn(n_classes,n_channels,h_params)
     acc = cnn.train_cnn(100, train_dataloader, valid_dataloader, test_dataloader)
     return acc
 
@@ -181,10 +181,10 @@ def objective_CAE(trial: optuna.Trial) -> float:
                 'class_layer_1':class_layer_1,
                 'class_layer_2':class_layer_2,
                 'trial_num':trial.number,
-                'study_name':trial.study.study_name,
-                'n_trials':10}
+                'study_name':trial.study.study_name}
 
-    x_train, y_train, x_valid, y_valid, x_test, y_test, n_classes = load_data()
+    compress_channel = True
+    x_train, y_train, x_valid, y_valid, x_test, y_test, n_classes = load_data(compress_channel)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train_dataset = TensorDataset(torch.Tensor(x_train).to(device), torch.Tensor(y_train).to(device))
@@ -196,7 +196,8 @@ def objective_CAE(trial: optuna.Trial) -> float:
     test_dataset = TensorDataset(torch.Tensor(x_test).to(device), torch.Tensor(y_test).to(device))
     test_dataloader = DataLoader(test_dataset)
 
-    cnn = Model.CAE(n_classes,h_params)
+    n_channels = x_train.shape[1]
+    cnn = Model.CAE(n_classes,n_channels,h_params)
     acc = cnn.train_cnn(100, train_dataloader, valid_dataloader, test_dataloader)
     return acc
 
@@ -211,10 +212,10 @@ def optimize_network():
 
     # do the hyperparameter optimzation
     if case_to_run == 0:
-        study = optuna.create_study(storage='sqlite:///db.sqlite3',study_name='VanillaCnnCompressed',direction='maximize',load_if_exists=True)
+        study = optuna.create_study(storage='sqlite:///db.sqlite3Test',study_name='VanillaCnnCompressed',direction='maximize',load_if_exists=True)
         study.optimize(objective_Vanilla_Cnn,n_trials=50)
     elif case_to_run == 1:
-        study = optuna.create_study(storage='sqlite:///db.sqlite3', study_name='CAECompressed', direction='maximize',
+        study = optuna.create_study(storage='sqlite:///db.sqlite3Test', study_name='CAECompressed', direction='maximize',
                                     load_if_exists=True)
         study.optimize(objective_CAE, n_trials=50)
 

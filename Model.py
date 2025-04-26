@@ -14,7 +14,7 @@ import torch.optim as optim
 
 class VanillaCnn(nn.Module):
 
-    def __init__(self, n_classes, h_params, h_in=64,w_in=84):
+    def __init__(self, n_classes, n_channels, h_params, h_in=64,w_in=84):
         """
         Create a  vanilla convolutional neural network
 
@@ -29,7 +29,7 @@ class VanillaCnn(nn.Module):
 
         self.h_params = h_params
         self.conv_layer_dict = dict()
-        channel_in = 1
+        channel_in = n_channels
         self.pool = nn.MaxPool2d(self.h_params['pool_kernel'], self.h_params['pool_stride']).to(device)
         for i in range(self.h_params['n_cnn_layers']):
             self.conv_layer_dict['conv_'+str(i)] = nn.Conv2d(in_channels=channel_in,
@@ -220,7 +220,7 @@ class VanillaCnn(nn.Module):
 
 class CAE(nn.Module):
 
-    def __init__(self, n_classes, h_params, h_in=64, w_in=84):
+    def __init__(self, n_classes, n_channels, h_params, h_in=64, w_in=84):
         """
         Create a convolutional auto encoder neural network. This network has two tails, one tries to reproduce the image,
         and the second predicts the classes. The class prediction branches from the bottleneck layer of the CAE.
@@ -236,7 +236,7 @@ class CAE(nn.Module):
 
         self.h_params = h_params
         self.conv_layer_dict = dict()
-        channel_in = 1
+        channel_in = n_channels
         #self.pool = nn.MaxPool2d(self.h_params['pool_kernel'], self.h_params['pool_stride']).to(device)
 
         # build encoder
