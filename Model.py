@@ -454,3 +454,149 @@ class CAE(nn.Module):
                     df.to_csv(metrics_file_name, index=False)
 
         return float(valid_acc_best.to('cpu'))
+    
+lass DenseNetBC(nn.Module):
+
+    def __init__(self, n_classes, h_params, h_in=64, w_in=84):
+        super().__init__()
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        self.h_params = h_params
+        self.blocks = nn.ModuleList()
+        channel_in = 1  # grayscale images
+
+        self.pool = nn.MaxPool2d(self.h_params['pool_kernel'], self.h_params['pool_stride']).to(device)
+
+        for i in range(self.h_params['n_dense_layers']):
+            bottleneck = nn.Conv2d(channel_in, self.h_params['bottleneck_width'], kernel_size=1, stride=1, padding=0, bias=False).to(device)
+            conv = nn.Conv2d(self.h_params['bottleneck_width'], self.h_params['growth_rate'],
+                             kernel_size=self.h_params['kernel_size'],
+                             stride=self.h_params['stride'],
+                             padding=self.h_params['padding'],
+                             bias=False).to(device)
+            self.blocks.append(nn.ModuleDict({
+                'bottleneck': bottleneck,
+                'conv': conv
+            }))
+
+            h_in, w_in = self.get_conv_output_dim(h_in, w_in, conv)
+            h_in, w_in = self.get_pool_output_dim(h_in, w_in, self.pool)
+            channel_in += self.h_params['growth_rate']
+
+            # Compression layer
+            out_channels = int(channel_in * self.h_params['compression'])
+            self.blocks.append(nn.Conv2d(channel_in, out_channels, kernel_size=1, stride=1, padding=0, bias=False).to(device))
+            channel_in = out_channels
+
+        self.fc1 = nn.Linear(channel_in * h_in * w_in, self.h_params['connect_layer_1'], device=device)
+        self.fc2 = nn.Linear(self.h_params['connect_layer_1'], self.h_params['connect_layer_2'], device=device)
+        self.fc3 = nn.Linear(self.h_params['connect_layer_2'], n_classes, device=device)
+
+        self.dropout = nn.Dropout(self.h_params['dropout_rate']).to(device)
+
+    def get_conv_output_dim(self, h_in, w_in, layer):
+        h_out = (h_in + 2 * layer.padding[0] - layer.dilation[0] * (layer.kernel_size[0] - 1) - 1) / layer.stride[0] + 1
+        h_out = int(np.floor(h_out))
+        w_out = (w_in + 2 * layer.padding[1] - layer.dilation[1] * (layer.kernel_size[1] - 1) - 1) / layer.stride[1] + 1
+        w_out = int(np.floor(w_out))
+        return h_out, w_out
+
+    def get_pool_output_dim(self, h_in, w_in, layer):
+        h_out = (h_in + 2 * layer.padding - layer.dilation * (layer.kernel_size - 1) - 1) / layer.stride + 1
+        h_out = int(np.floor(h_out))
+        w_out = (w_in + 2 * layer.padding - layer.dilation * (layer.kernel_size - 1) - 1) / layer.stride + 1
+        w_out = int(np.floor(w_out))
+        return h_out, w_out
+    def forward(self, x):
+        for block in self.blocks:
+            if isinstance(block, nn.ModuleDict):
+                out = F.relu(block['bottleneck'](x))
+                out = F.relu(block['conv'](out))
+                x = torch.cat([x, out], dim=1)
+                x = self.pool(x)
+            else:
+                x = block(x)
+
+        x = torch.flatten(x, 1)
+        x = self.dropout(x)
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)   #
+        return x
+
+    def get_acc_dataset(self, criterion, dataset, device):
+        inputs, labels = dataset.tensors
+        self.eval()
+        outputs = self.forward(inputs)
+        loss = criterion(outputs, labels)
+
+        preds = torch.sigmoid(outputs)   # Apply sigmoid for prediction
+        class_pred = torch.round(preds).to(device)  # Now safely threshold at 0.5
+        shape = labels.shape
+        acc = torch.sum(class_pred == labels) / (shape[0] * shape[1])
+        return acc, loss, class_pred
+
+    def train_cnn(self, n_epochs, train_loader, validation_loader, test_loader):
+        criterion = nn.BCEWithLogitsLoss()   #
+        optimizer = optim.Adam(self.parameters())
+        valid_acc_best = 0
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        for epoch in range(n_epochs):
+            running_loss = 0.0
+            self.train()
+            for i, data in enumerate(train_loader, 0):
+                inputs, labels = data
+                optimizer.zero_grad()
+                outputs = self.forward(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item()
+
+            with torch.no_grad():
+                self.eval()
+                train_acc, train_loss, _ = self.get_acc_dataset(criterion, train_loader.dataset, device)
+                valid_acc, val_loss, class_pred = self.get_acc_dataset(criterion, validation_loader.dataset, device)
+
+                print('Epoch: {:d}\tTrain Loss: {:.5f}\tTrain Acc: {:.5f}\tValid Loss: {:.5f}\tValid Acc: {:.5f}'.format(
+                    epoch, running_loss, train_acc, val_loss, valid_acc))
+
+                if valid_acc > valid_acc_best:
+                    valid_acc_best = valid_acc
+
+                    torch.save(self.state_dict(), os.path.join('models',
+                                self.h_params['study_name']+'_'+str(self.h_params['trial_num'])+'.torch'))
+
+                    test_acc, test_loss, _ = self.get_acc_dataset(criterion, test_loader.dataset, device)
+
+                    inputs, labels = validation_loader.dataset.tensors
+                    cm = multilabel_confusion_matrix(labels.to('cpu'), class_pred.to('cpu'))
+                    fig = plt.figure(0, figsize=(10, 8))
+                    for k in range(10):
+                        tmp_cm = cm[k,:,:]
+                        disp = ConfusionMatrixDisplay(confusion_matrix=tmp_cm)
+                        ax = fig.add_subplot(3,4,k+1)
+                        ax.set_title('Class='+str(k))
+                        disp.plot(ax=ax)
+                        plt.tight_layout()
+                    plt.savefig(os.path.join('models', self.h_params['study_name']+'_'+str(self.h_params['trial_num'])+'.png'))
+                    plt.close()
+
+                    metrics_file_name = os.path.join('models', self.h_params['study_name']+'_metrics.csv')
+                    if not os.path.isfile(metrics_file_name):
+                        col_names = ['trial_num','train_acc','train_loss','valid_acc','valid_loss','test_acc','test_loss']
+                        df = pd.DataFrame(data=np.zeros((self.h_params['n_trials'],len(col_names))),columns=col_names)
+                    else:
+                        df = pd.read_csv(metrics_file_name,index_col=False)
+                    df.loc[self.h_params['trial_num'],'trial_num'] = self.h_params['trial_num']
+                    df.loc[self.h_params['trial_num'],'train_acc'] = float(train_acc.to('cpu'))
+                    df.loc[self.h_params['trial_num'],'train_loss'] = float(train_loss.to('cpu'))
+                    df.loc[self.h_params['trial_num'],'valid_acc'] = float(valid_acc.to('cpu'))
+                    df.loc[self.h_params['trial_num'],'valid_loss'] = float(val_loss.to('cpu'))
+                    df.loc[self.h_params['trial_num'],'test_acc'] = float(test_acc.to('cpu'))
+                    df.loc[self.h_params['trial_num'],'test_loss'] = float(test_loss.to('cpu'))
+                    df.to_csv(metrics_file_name,index=False)
+
+        return float(valid_acc_best.to('cpu'))

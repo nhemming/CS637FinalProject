@@ -201,6 +201,55 @@ def objective_CAE(trial: optuna.Trial) -> float:
     acc = cnn.train_cnn(100, train_dataloader, valid_dataloader, test_dataloader)
     return acc
 
+def objective_DenseNetBC(trial):
+    dropout_rate = trial.suggest_float("dropout", 0.0, 0.5)
+    n_dense_layers = trial.suggest_int("num_dense_layers", 2, 6)
+    growth_rate = trial.suggest_int('growth_rate', 8, 32)
+    bottleneck_width = trial.suggest_int('bottleneck_width', 4, 32)
+    compression = trial.suggest_float('compression', 0.5, 1.0)
+    kernel_size = trial.suggest_int('kernel_size', 3, 3)
+    stride = 1
+    padding = kernel_size // 2
+    pool_kernel = 2
+    pool_stride = 2
+    connect_layer_1 = trial.suggest_int('connect_layer_1', 32, 512)
+    connect_layer_2 = trial.suggest_int('connect_layer_2', 32, 512)
+    batch_size = trial.suggest_int('batch_size', 16, 512)
+
+    h_params = {
+        'dropout_rate': dropout_rate,
+        'n_dense_layers': n_dense_layers,
+        'growth_rate': growth_rate,
+        'bottleneck_width': bottleneck_width,
+        'compression': compression,
+        'kernel_size': kernel_size,
+        'stride': stride,
+        'padding': padding,
+        'pool_kernel': pool_kernel,
+        'pool_stride': pool_stride,
+        'connect_layer_1': connect_layer_1,
+        'connect_layer_2': connect_layer_2,
+        'batch_size': batch_size,
+        'study_name': 'DenseNetBC_Study',
+        'trial_num': trial.number,
+        'n_trials': 5
+    }
+
+    x_train, y_train, x_valid, y_valid, x_test, y_test, n_classes = load_data()
+
+    train_data = torch.utils.data.TensorDataset(torch.Tensor(x_train), torch.Tensor(y_train))
+    valid_data = torch.utils.data.TensorDataset(torch.Tensor(x_valid), torch.Tensor(y_valid))
+    test_data = torch.utils.data.TensorDataset(torch.Tensor(x_test), torch.Tensor(y_test))
+
+    train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    valid_loader = torch.utils.data.DataLoader(valid_data, batch_size=batch_size, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False)
+
+    model = Model.DenseNetBC(n_classes=n_classes, h_params=h_params)
+    valid_acc = model.train_cnn(20, train_loader, valid_loader, test_loader)
+
+    return 1.0 - valid_acc
+
 def optimize_network():
 
     '''
@@ -218,6 +267,10 @@ def optimize_network():
         study = optuna.create_study(storage='sqlite:///db.sqlite3Test', study_name='CAECompressed', direction='maximize',
                                     load_if_exists=True)
         study.optimize(objective_CAE, n_trials=50)
+    elif case_to_run == 2:
+        study = optuna.create_study(storage='sqlite:///db.sqlite3', study_name='DenseNetCompressed', direction='maximize',
+                                    load_if_exists=True)
+        study.optimize(objective_DenseNetBC, n_trials=5)
 
 
 if __name__ == '__main__':
