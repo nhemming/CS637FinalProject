@@ -45,6 +45,7 @@ def main():
     sns.set_theme()
     dist = 0.2
 
+    fig = plt.figure(figsize=(14,8))
     X_axis = np.arange(len(df_aggregate))
     plt.bar(X_axis + (-1) * dist, df_aggregate["train_acc"], dist, label='train')
     plt.bar(X_axis + 0 * dist, df_aggregate["valid_acc"], dist, label='valid')

@@ -455,25 +455,25 @@ class CAE(nn.Module):
 
         return float(valid_acc_best.to('cpu'))
     
-lass DenseNetBC(nn.Module):
+class DenseNetBC(nn.Module):
 
-    def __init__(self, n_classes, h_params, h_in=64, w_in=84):
+    def __init__(self, n_classes, n_channels, h_params, h_in=64, w_in=84):
         super().__init__()
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.h_params = h_params
         self.blocks = nn.ModuleList()
-        channel_in = 1  # grayscale images
+        channel_in = n_channels  # grayscale images
 
         self.pool = nn.MaxPool2d(self.h_params['pool_kernel'], self.h_params['pool_stride']).to(device)
 
         for i in range(self.h_params['n_dense_layers']):
-            bottleneck = nn.Conv2d(channel_in, self.h_params['bottleneck_width'], kernel_size=1, stride=1, padding=0, bias=False).to(device)
+            bottleneck = nn.Conv2d(channel_in, self.h_params['bottleneck_width'], kernel_size=1, stride=1, padding=0, bias=False,device=device)
             conv = nn.Conv2d(self.h_params['bottleneck_width'], self.h_params['growth_rate'],
                              kernel_size=self.h_params['kernel_size'],
                              stride=self.h_params['stride'],
                              padding=self.h_params['padding'],
-                             bias=False).to(device)
+                             bias=False,device=device)
             self.blocks.append(nn.ModuleDict({
                 'bottleneck': bottleneck,
                 'conv': conv
